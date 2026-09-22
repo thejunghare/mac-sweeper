@@ -1,0 +1,33 @@
+# SwiftLint — PLAN.md §8 Phase 0 (CI lane). Warnings don't fail CI; errors do.
+excluded:
+  - Core/.build
+  - Broom.xcodeproj
+  - .kilo
+  - vendor
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - duplicated_arguments
+  - redundant_nil_coalescing
+
+disabled_rules:
+  # Purely stylistic; trailing collection commas are legal and readable here.
+  - trailing_comma
+  # Short local names (`v` for verdict, `i` for index) are idiomatic in these tests.
+  - identifier_name
+
+line_length:
+  warning: 120
+  error: 220
+
+function_body_length:
+  warning: 60
+
+cyclomatic_complexity:
+  warning: 12
+
+type_body_length:
+  warning: 350
+
+reporter: "xcode"

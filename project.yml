@@ -1,0 +1,95 @@
+name: Broom
+options:
+  bundleIdPrefix: app.broom
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  xcodeVersion: "27.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    CODE_SIGN_STYLE: Automatic
+    # Direct (non-MAS) distribution per PLAN.md §10: no App Sandbox.
+    # Hardened Runtime + Developer ID + notarization per §5.7 (signing identity is
+    # supplied at build time: DEVELOPMENT_TEAM / CODE_SIGN_IDENTITY).
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+    GCC_C_LANGUAGE_STANDARD: gnu17
+    CLANG_ENABLE_MODULES: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+
+packages:
+  CleanerCore:
+    path: Core
+
+targets:
+  Broom:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - "Resources/Info.plist"
+          - "Resources/Broom.entitlements"
+    dependencies:
+      - package: CleanerCore
+    info:
+      path: App/Resources/Info.plist
+      properties:
+        CFBundleName: Broom
+        CFBundleDisplayName: Broom
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSApplicationCategoryType: public.app-category.utilities
+        LSMinimumSystemVersion: "13.0"
+        NSHumanReadableCopyright: "© 2026 Broom. No warranty; review every clean before confirming."
+        NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
+        # No usage-description keys: Broom requires no camera/mic/etc. Full Disk Access
+        # has no Info.plist key — it is requested in System Settings (see §5.1).
+    entitlements:
+      path: App/Resources/Broom.entitlements
+      properties: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.broom.Broom
+        PRODUCT_NAME: Broom
+        ENABLE_APP_SANDBOX: NO
+        COMBINE_HIDPI_IMAGES: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
+
+  BroomTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: AppTests
+    dependencies:
+      - target: Broom
+      - package: CleanerCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.broom.BroomTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Broom:
+    build:
+      targets:
+        Broom: all
+        BroomTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BroomTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

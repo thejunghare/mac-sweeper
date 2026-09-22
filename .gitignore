@@ -1,0 +1,28 @@
+# Xcode / SwiftPM
+build/
+DerivedData/
+Core/.build/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+
+# Xcode project is generated from project.yml — regenerate with `xcodegen generate`
+Broom.xcodeproj/
+
+# SPM
+.swiftpm/
+Package.resolved
+.build/
+
+# macOS
+.DS_Store
+
+# Tooling
+.kilo/
+node_modules/
+
+# Secrets (never commit signing material)
+*.p12
+*.cer
+*.provisionprofile
+AuthKey_*.p8
