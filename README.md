@@ -19,6 +19,12 @@ with safety as the core design constraint.
 - Hard denylist: `/System`, `/bin`, `/sbin`, `/usr`, `/Library/Extensions`,
   Desktop/Documents/Pictures/Movies can never be deleted regardless of scanner output.
 - Symlink/TOCTOU re-validation immediately before every delete.
+- **Deepest File** (sidebar → Actions): walks your home folder and shows the single most
+  deeply nested file, with a **Can delete / Can't delete** flag and the reason. It is the
+  in-app equivalent of
+  `find ~ -type f | awk -F/ '{print NF, $0}' | sort -n | tail -1`, but read-only, never
+  follows symlinks, and the flag applies the same rules engine + symlink guard the deleter
+  uses. Informational only — nothing is deleted from this screen.
 
 See [PLAN.md](PLAN.md) for the full specification,
 [docs/SECURITY.md](docs/SECURITY.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)

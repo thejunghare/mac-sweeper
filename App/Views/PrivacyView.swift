@@ -52,6 +52,16 @@ struct PrivacyView: View {
                     )
 
                     principle(
+                        title: "Deepest File lookup",
+                        body: """
+                            Only when you open it, Broom walks your home folder reading file \
+                            names and depth (never contents) to find the most deeply nested \
+                            file, and tells you whether its safety rules would allow deleting \
+                            it. Nothing is deleted from that screen.
+                            """
+                    )
+
+                    principle(
                         title: "Full Disk Access",
                         body: FullDiskAccess.explanation + "\n\nBroom asks for this only when you choose to scan protected locations, and links you straight to the relevant System Settings pane."
                     )

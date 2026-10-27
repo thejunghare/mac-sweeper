@@ -33,6 +33,12 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var undoResult: UndoRestorer.Result?
     @Published private(set) var lastErrorMessage: String?
 
+    /// Deepest-file lookup (informational; never feeds the deletion engine).
+    @Published private(set) var deepestFile: DeepestFileFinder.Result?
+    @Published private(set) var isFindingDeepestFile = false
+    @Published private(set) var deepestFileFilesExamined = 0
+    @Published private(set) var hasSearchedDeepestFile = false
+
     /// Paths selected for cleaning.
     @Published var selection: Set<String> = []
     @Published var searchText: String = ""
@@ -125,6 +131,7 @@ final class ScanViewModel: ObservableObject {
 
     private var scanTask: Task<Void, Never>?
     private var cleanTask: Task<Void, Never>?
+    private var deepestFileTask: Task<Void, Never>?
 
     func startScan() async {
         guard !isBusy else { return }
@@ -283,6 +290,43 @@ final class ScanViewModel: ObservableObject {
         } catch {
             lastErrorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: Deepest file
+
+    /// Walks the home folder for the most deeply nested file and flags whether Broom may
+    /// delete it. Read-only; cancellable at any time.
+    func findDeepestFile() async {
+        guard !isFindingDeepestFile else { return }
+        isFindingDeepestFile = true
+        deepestFile = nil
+        deepestFileFilesExamined = 0
+
+        let finder = DeepestFileFinder()
+        deepestFileTask = Task {
+            let result = await finder.findDeepestFile { [weak self] examined in
+                Task { @MainActor [weak self] in
+                    self?.deepestFileFilesExamined = max(self?.deepestFileFilesExamined ?? 0, examined)
+                }
+            }
+            // A cancelled run already reset the state in cancelDeepestFileSearch().
+            guard !Task.isCancelled else { return }
+            self.isFindingDeepestFile = false
+            self.deepestFile = result
+            self.hasSearchedDeepestFile = true
+        }
+        await deepestFileTask?.value
+    }
+
+    func cancelDeepestFileSearch() {
+        deepestFileTask?.cancel()
+        deepestFileTask = nil
+        isFindingDeepestFile = false
+    }
+
+    func revealDeepestFileInFinder() {
+        guard let deepestFile else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([deepestFile.path])
     }
 
     // MARK: Permission UX (§5.1)

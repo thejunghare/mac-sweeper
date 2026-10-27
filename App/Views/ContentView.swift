@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var selectedSidebarCategory: JunkCategory?
     @State private var showConfirmation = false
     @State private var showPrivacy = false
+    @State private var showDeepestFile = false
 
     var body: some View {
         NavigationSplitView {
@@ -34,6 +35,10 @@ struct ContentView: View {
         .sheet(isPresented: $showPrivacy) {
             PrivacyView()
         }
+        .sheet(isPresented: $showDeepestFile) {
+            DeepestFileView()
+                .environmentObject(model)
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: model.phase)
         .onAppear { model.refreshFullDiskAccess() }
     }
@@ -56,6 +61,13 @@ struct ContentView: View {
             }
 
             Section("Actions") {
+                Button {
+                    showDeepestFile = true
+                } label: {
+                    Label("Deepest File", systemImage: "arrow.down.to.line")
+                }
+                .accessibilityLabel("Find the most deeply nested file and whether Broom can delete it")
+
                 Button {
                     showPrivacy = true
                 } label: {

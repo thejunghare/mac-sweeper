@@ -40,15 +40,18 @@ public struct JunkItem: Identifiable, Hashable, Sendable {
     }
 
     /// Display path relative to the user's home directory where possible.
-    public var displayPath: String {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let homePath = home.standardizedFileURL.path
-        let pathString = path.path
-        if pathString.hasPrefix(homePath + "/") {
-            return "~" + String(pathString.dropFirst(homePath.count))
-        }
-        return pathString
+    public var displayPath: String { homeRelativePath(path) }
+}
+
+/// `~`-relative form of an absolute path when it lies inside the user's home directory.
+func homeRelativePath(_ url: URL) -> String {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let homePath = home.standardizedFileURL.path
+    let pathString = url.path
+    if pathString.hasPrefix(homePath + "/") {
+        return "~" + String(pathString.dropFirst(homePath.count))
     }
+    return pathString
 }
 
 /// A non-fatal scanning problem (permission denied, vanished file, ...).surfaced in the UI
