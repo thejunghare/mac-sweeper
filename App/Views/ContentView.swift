@@ -1,28 +1,48 @@
 import CleanerCore
 import SwiftUI
 
-/// Standard window chrome: sidebar of categories + detail pane (§12.2),
-/// unified toolbar, Liquid Glass materials with pre-macOS-26 fallbacks (§12.1).
+/// Window chrome: a sidebar with three places — Clean, Storage, Deep Clean — and a detail
+/// pane (§12.2). Each place puts its actions in the unified toolbar.
 struct ContentView: View {
     @EnvironmentObject private var model: ScanViewModel
-    @State private var selectedSidebarCategory: JunkCategory?
+    @StateObject private var storage = StorageViewModel()
+    @State private var destination: Destination? = .clean
     @State private var showConfirmation = false
     @State private var showPrivacy = false
-    @State private var showDeepestFile = false
-    @State private var showStorage = false
+
+    enum Destination: String, CaseIterable, Identifiable {
+        case clean
+        case storage
+        case deepClean
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .clean: return "Clean"
+            case .storage: return "Storage"
+            case .deepClean: return "Deep Clean"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .clean: return "sparkles"
+            case .storage: return "internaldrive"
+            case .deepClean: return "arrow.down.to.line"
+            }
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 300)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
         } detail: {
             detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.background)
         }
-        .searchable(
-            text: $model.searchText,
-            placement: .toolbar,
-            prompt: "Filter results"
-        )
         .toolbar { toolbarContent }
         .sheet(isPresented: $showConfirmation) {
             CleanConfirmationSheet(
@@ -36,13 +56,6 @@ struct ContentView: View {
         .sheet(isPresented: $showPrivacy) {
             PrivacyView()
         }
-        .sheet(isPresented: $showStorage) {
-            StorageView()
-        }
-        .sheet(isPresented: $showDeepestFile) {
-            DeepestFileView()
-                .environmentObject(model)
-        }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: model.phase)
         .onAppear { model.refreshFullDiskAccess() }
     }
@@ -50,89 +63,52 @@ struct ContentView: View {
     // MARK: Sidebar
 
     private var sidebar: some View {
-        List(selection: $selectedSidebarCategory) {
-            Section {
-                if model.report == nil {
-                    Label("Overview", systemImage: "sparkles")
-                        .tag(JunkCategory?.none)
-                }
-                ForEach(model.categoriesInReport) { category in
-                    categoryRow(category)
-                        .tag(category as JunkCategory?)
-                }
-            } header: {
-                Text(model.report == nil ? "Broom" : "Found")
-            }
-
-            Section("Actions") {
-                Button {
-                    showStorage = true
-                } label: {
-                    Label("Storage", systemImage: "internaldrive")
-                }
-                .accessibilityLabel("Storage: see what fills your disk and delete items directly")
-
-                Button {
-                    showDeepestFile = true
-                } label: {
-                    Label("Deep Clean", systemImage: "arrow.down.to.line")
-                }
-                .accessibilityLabel("Deep Clean: find the deepest file and files that are safe to remove")
-
-                Button {
-                    showPrivacy = true
-                } label: {
-                    Label("What Broom Accesses", systemImage: "lock.shield")
-                }
-                .accessibilityLabel("What Broom accesses and why")
+        List(selection: $destination) {
+            ForEach(Destination.allCases) { destination in
+                Label(destination.title, systemImage: destination.symbol)
+                    .tag(destination as Destination?)
             }
         }
         .listStyle(.sidebar)
-    }
-
-    private func categoryRow(_ category: JunkCategory) -> some View {
-        let size = model.size(in: category)
-        let count = model.items(in: category).count
-        return HStack {
-            Label(category.displayName, systemImage: category.symbolName)
-            Spacer()
-            if size > 0 {
-                Text(ByteFormat.string(size))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                showPrivacy = true
+            } label: {
+                Label("Privacy", systemImage: "lock.shield")
+                    .font(.callout)
             }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .accessibilityLabel("What Broom accesses and why")
         }
-        .badge(count)
-        .accessibilityLabel("\(category.displayName), \(count) items, \(ByteFormat.string(size))")
     }
 
     // MARK: Detail
 
+    @ViewBuilder
     private var detail: some View {
-        Group {
+        switch destination ?? .clean {
+        case .clean:
             switch model.phase {
             case .idle:
                 WelcomeView()
             case .scanning:
                 ScanProgressView()
             case .review:
-                ReviewView(selectedCategory: $selectedSidebarCategory)
+                ReviewView { showConfirmation = true }
             case .cleaning:
                 CleaningProgressView()
             case .finished:
                 CleanSummaryView()
             }
+        case .storage:
+            StorageView()
+                .environmentObject(storage)
+        case .deepClean:
+            DeepestFileView()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(surfaceBackground)
-    }
-
-    private var surfaceBackground: some View {
-        // Vibrant material behind content; glass containers layer on top (§12.1).
-        Rectangle()
-            .fill(.background)
-            .ignoresSafeArea()
     }
 
     // MARK: Toolbar
@@ -140,66 +116,65 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            switch model.phase {
-            case .idle, .finished:
+            switch destination ?? .clean {
+            case .clean:
+                cleanToolbar
+            case .storage:
                 Button {
-                    Task { await model.startScan() }
+                    storage.analyze()
                 } label: {
-                    Label(model.phase == .finished ? "Scan Again" : "Scan",
-                          systemImage: "magnifyingglass")
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .keyboardShortcut("r", modifiers: .command)
-                .disabled(model.isBusy)
-                .accessibilityLabel("Start scan")
-
-            case .scanning:
-                Button {
-                    model.cancelScan()
-                } label: {
-                    Label("Cancel Scan", systemImage: "xmark.circle")
+                .disabled(storage.isAnalyzing || storage.isDeleting)
+                .help("Measure again")
+            case .deepClean:
+                if model.isFindingDeepestFile {
+                    Button {
+                        model.cancelDeepestFileSearch()
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle")
+                    }
+                    .keyboardShortcut(.cancelAction)
+                } else {
+                    Button {
+                        Task { await model.findDeepestFile() }
+                    } label: {
+                        Label("Search Again", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(model.isDeletingSuggestions)
+                    .help("Search again")
                 }
-                .keyboardShortcut(.cancelAction)
-                .accessibilityLabel("Cancel the running scan")
-
-            case .review:
-                Button {
-                    model.selectAll(in: .userCaches, true)
-                } label: {
-                    Label("Select All", systemImage: "checkmark.circle")
-                }
-                .help("Select all low- and medium-risk items")
-
-                Button {
-                    showConfirmation = true
-                } label: {
-                    Label("Clean…", systemImage: "trash")
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(model.selectedCount == 0)
-                .accessibilityLabel("Clean selected items")
-
-            case .cleaning:
-                Button {
-                    model.cancelClean()
-                } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
-                }
-                .keyboardShortcut(.cancelAction)
-                .accessibilityLabel("Cancel the running clean")
             }
         }
+    }
 
-        ToolbarItem(placement: .status) {
-            if model.phase == .scanning || model.phase == .cleaning {
-                ProgressView()
-                    .progressViewStyle(.linear)
-                    .frame(width: 140)
-            } else if let report = model.report, model.phase == .review {
-                Text("\(ByteFormat.string(report.totalDeletableSize)) reclaimable")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .accessibilityLabel("\(ByteFormat.string(report.totalDeletableSize)) reclaimable")
+    @ViewBuilder
+    private var cleanToolbar: some View {
+        switch model.phase {
+        case .idle, .review, .finished:
+            Button {
+                Task { await model.startScan() }
+            } label: {
+                Label(model.phase == .idle ? "Scan" : "Scan Again", systemImage: "arrow.clockwise")
             }
+            .keyboardShortcut("r", modifiers: .command)
+            .help("Scan (⌘R)")
+        case .scanning:
+            Button {
+                model.cancelScan()
+            } label: {
+                Label("Stop", systemImage: "stop.circle")
+            }
+            .keyboardShortcut(.cancelAction)
+            .help("Stop scanning")
+        case .cleaning:
+            Button {
+                model.cancelClean()
+            } label: {
+                Label("Stop", systemImage: "stop.circle")
+            }
+            .keyboardShortcut(.cancelAction)
+            .help("Stop — moved items stay restorable")
         }
     }
 }

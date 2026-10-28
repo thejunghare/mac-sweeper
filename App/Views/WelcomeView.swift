@@ -1,95 +1,55 @@
 import CleanerCore
 import SwiftUI
 
-/// Landing state: honest, factual framing — no fake system alerts, no fear copy (§5.8).
+/// Landing state: one sentence, one button. Factual, no scare copy (§5.8).
 struct WelcomeView: View {
     @EnvironmentObject private var model: ScanViewModel
-    @State private var showPrivacy = false
-    @State private var showStorage = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-
-            Image(systemName: "broom")
-                .font(.system(size: 56, weight: .light))
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 44, weight: .light))
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
 
-            Text("Find files you can safely remove")
-                .font(.title2)
+            Text("Free up space")
+                .font(.title2.weight(.semibold))
 
-            Text("""
-                Broom scans your Mac for caches, logs and leftovers, shows you exactly \
-                what it found — with sizes and dates — and moves only what you choose \
-                to the Trash. Everything is recoverable until you empty the Trash yourself.
-                """)
-                .font(.body)
+            Text("Find caches, logs and leftovers. You choose what goes to the Trash.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 520)
-
-            if !model.hasFullDiskAccess {
-                permissionCard
-            }
 
             Button {
                 Task { await model.startScan() }
             } label: {
-                Label("Scan for Junk", systemImage: "magnifyingglass")
-                    .font(.body.weight(.medium))
-                    .padding(.horizontal, 6)
+                Text("Scan").frame(minWidth: 100)
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
+            .padding(.top, 4)
             .accessibilityLabel("Scan for junk files")
 
-            Button {
-                showStorage = true
-            } label: {
-                Label("Manage Storage", systemImage: "internaldrive")
-                    .padding(.horizontal, 6)
+            if !model.hasFullDiskAccess {
+                fullDiskAccessHint
+                    .padding(.top, 12)
             }
-            .controlSize(.large)
-            .accessibilityLabel("Manage storage: see what fills your disk and delete items directly")
-
-            Button("What does Broom access and why?") {
-                showPrivacy = true
-            }
-            .buttonStyle(.link)
-            .accessibilityLabel("Open the screen explaining what Broom accesses and why")
-
-            Spacer()
         }
         .padding(40)
+        .frame(maxWidth: 460)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(isPresented: $showPrivacy) { PrivacyView() }
-        .sheet(isPresented: $showStorage) { StorageView() }
     }
 
-    private var permissionCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Full Disk Access not granted", systemImage: "lock")
-                .font(.headline)
-            Text(FullDiskAccess.explanation)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Open System Settings") {
-                    model.openFullDiskAccessSettings()
-                }
-                .buttonStyle(.bordered)
-                Button("Re-check") {
-                    model.refreshFullDiskAccess()
-                }
+    private var fullDiskAccessHint: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock")
+            Text("Some folders need Full Disk Access.")
+            Button("Grant…") { model.openFullDiskAccessSettings() }
                 .buttonStyle(.link)
-            }
         }
-        .padding()
-        .frame(maxWidth: 560, alignment: .leading)
-        .glassCard()
-        .accessibilityElement(children: .contain)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .help(FullDiskAccess.explanation)
+        .onAppear { model.refreshFullDiskAccess() }
     }
 }

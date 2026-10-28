@@ -19,13 +19,13 @@ with safety as the core design constraint.
 - Hard denylist: `/System`, `/bin`, `/sbin`, `/usr`, `/Library/Extensions`,
   Desktop/Documents/Pictures/Movies can never be deleted regardless of scanner output.
 - Symlink/TOCTOU re-validation immediately before every delete.
-- **Storage** (Welcome → Manage Storage, or sidebar → Actions): the same sections as
+- **Storage** (sidebar): the same sections as
   System Settings → Storage — Applications, Developer, Documents, Mail, Photos, Trash,
   System Data — with each section's actual contents, largest first. Every item has one
   flag (**Safe to delete** / **Check first** / **Can't delete**) and a **Delete** button
   (Move to Trash, with Undo). Safe items go in one click; "Check first" items (your files,
   apps) ask once; parts of macOS, Photos/Mail libraries and the Trash can't be deleted.
-- **Deep Clean** (sidebar → Actions): walks your home folder and shows the single most
+- **Deep Clean** (sidebar): walks your home folder and shows the single most
   deeply nested file, with a **Can delete / Can't delete** flag and the reason — the
   in-app equivalent of `find ~ -type f | awk -F/ '{print NF, $0}' | sort -n | tail -1`,
   but never following symlinks. It also lists **files suggested for removal** (cache, log,

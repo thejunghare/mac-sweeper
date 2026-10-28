@@ -14,15 +14,6 @@ struct PrivacyView: View {
                 Label("What Broom Accesses and Why", systemImage: "lock.shield")
                     .font(.title3.weight(.semibold))
                 Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .accessibilityLabel("Close")
             }
             .padding()
             .glassBar()
@@ -97,19 +88,10 @@ struct PrivacyView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: category.symbolName)
                                 .frame(width: 22)
-                                .foregroundStyle(riskColor(category.riskLevel))
+                                .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(category.displayName)
-                                        .font(.callout.weight(.medium))
-                                    RiskBadge(risk: category.riskLevel)
-                                    if !category.isDeletable {
-                                        Text("informational only")
-                                            .font(.caption2)
-                                            .italic()
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                                Text(category.displayName)
+                                    .font(.callout.weight(.medium))
                                 Text(category.explanation)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)

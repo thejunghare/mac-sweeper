@@ -341,11 +341,6 @@ final class ScanViewModel: ObservableObject {
         isFindingDeepestFile = false
     }
 
-    func revealDeepestFileInFinder() {
-        guard let deepestFile else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([deepestFile.path])
-    }
-
     /// Moves the given suggestions to the Trash right away (recoverable; undo offered).
     /// `SafeDeleter` re-runs every safety gate per file, so a stale suggestion is skipped,
     /// never forced.

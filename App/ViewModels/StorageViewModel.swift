@@ -11,7 +11,6 @@ final class StorageViewModel: ObservableObject {
     @Published private(set) var reports: [StorageSection: StorageSectionReport] = [:]
     @Published private(set) var isAnalyzing = false
     @Published private(set) var diskUsage: DiskUsage? = DiskUsage.current()
-    @Published var selectedSection: StorageSection? = .applications
     @Published private(set) var isDeleting = false
     @Published private(set) var message: String?
     /// "Check first" items waiting for the user's one confirmation.
@@ -24,6 +23,11 @@ final class StorageViewModel: ObservableObject {
     var canUndo: Bool { lastDelete != nil && !isDeleting }
 
     // MARK: Analysis
+
+    /// First visit only; Refresh calls `analyze()` directly.
+    func analyzeIfNeeded() {
+        if reports.isEmpty && !isAnalyzing { analyze() }
+    }
 
     func analyze() {
         analyzeTask?.cancel()
@@ -131,10 +135,6 @@ final class StorageViewModel: ObservableObject {
     }
 
     // MARK: Finder
-
-    func reveal(_ entry: StorageEntry) {
-        NSWorkspace.shared.activateFileViewerSelecting([entry.path])
-    }
 
     func openTrash() {
         let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")

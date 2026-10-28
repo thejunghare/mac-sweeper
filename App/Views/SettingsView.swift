@@ -63,7 +63,7 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: category.symbolName)
                                 .frame(width: 22)
-                                .foregroundStyle(riskColor(category.riskLevel))
+                                .foregroundStyle(.secondary)
                             VStack(alignment: .leading) {
                                 Text(category.displayName)
                                 Text(category.explanation)
