@@ -66,7 +66,9 @@ struct ContentView: View {
         List(selection: $destination) {
             ForEach(Destination.allCases) { destination in
                 Label(destination.title, systemImage: destination.symbol)
-                    .tag(destination as Destination?)
+                    // Must be the non-optional type: List(selection: Binding<Destination?>)
+                    // matches rows tagged with `Destination`, not `Destination?`.
+                    .tag(destination)
             }
         }
         .listStyle(.sidebar)
