@@ -28,7 +28,8 @@ Developer ID — PLAN.md §10). It is therefore **not App Sandboxed** and instea
 | Never delete the user's Desktop/Documents/Pictures/Movies contents | `RulesEngine.protectedHomeRoots` | `testProtectedHomeRootsNeverDeletable` |
 | Never follow symlinks out of a scan root (TOCTOU) | `SymlinkGuard` at delete time | `SymlinkGuardTests`, `testDeleterRefusesItemsEscapingRootViaSymlinkParent` |
 | Never auto-purge Trash contents | `SafeDeleter` skips `.trash` category | `testTrashCategoryItemsAreNeverAutoPurged` |
-| Informational categories (large files, duplicates) are never deletable | `JunkCategory.isDeletable` + `SafeDeleter` | `testDeleterRefusesInformationalCategories` |
+| Large files and duplicates are never preselected and never pass the junk rules; when the user picks them, `SafeDeleter` applies the Storage user-file checks instead | `JunkCategory.isUserChoice` + `SafeDeleter(userFiles:)` | `testDeleterRefusesInformationalCategories`, `UserFileDeletionTests` |
+| A duplicate group always keeps one copy: selection blocks the last copy, and the deleter re-hashes a surviving identical copy before each delete | `ScanViewModel.canSelect`, `SafeDeleter.survivingCopy` | `testSelectingEveryCopyStillKeepsOne`, `testDuplicateIsKeptWhenTheOtherCopyChanged` |
 | Never overwrite a reoccupied path during undo | `UndoRestorer` | `testUndoRefusesToOverwriteReoccupiedPath` |
 | Scanner bugs cannot surface denylisted paths | `ScanEngine` filters all results through `RulesEngine` | `testEngineFiltersDenylistedScannerOutput` |
 | No `rm -rf`, no shell string interpolation | Code contains no `Process` calls | grep in review |

@@ -132,17 +132,23 @@ private struct StorageSectionView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if section == .trash {
-                    Button("Open Trash") { model.openTrash() }
-                        .help("Empty the Trash in Finder")
+                    Button {
+                        model.openTrash()
+                    } label: {
+                        Label("Open Trash", systemImage: "arrow.up.forward.app")
+                    }
+                    .help("Open the Trash in Finder to empty it")
                 }
                 let safe = model.reports[section]?.safeEntries ?? []
                 let safeSize = safe.reduce(Int64(0)) { $0 + $1.size }
                 if !safe.isEmpty {
-                    Button("Delete Safe (\(ByteFormat.string(safeSize)))") {
+                    Button {
                         model.requestDelete(safe)
+                    } label: {
+                        Label("Delete Safe", systemImage: "trash")
                     }
                     .disabled(model.isDeleting)
-                    .help("Move every Safe item in \(section.displayName) to the Trash")
+                    .help("Move all safe items (\(ByteFormat.string(safeSize))) to the Trash")
                 }
             }
         }

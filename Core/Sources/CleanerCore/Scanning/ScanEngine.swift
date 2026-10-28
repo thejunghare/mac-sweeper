@@ -123,7 +123,8 @@ public actor ScanEngine {
                         riskLevel: max(effectiveRisk, item.riskLevel),
                         modificationDate: item.modificationDate,
                         root: item.root,
-                        detail: item.detail
+                        detail: item.detail,
+                        groupID: item.groupID
                     )
                 )
             case .deny(let reason):

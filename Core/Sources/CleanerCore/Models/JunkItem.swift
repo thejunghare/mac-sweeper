@@ -18,6 +18,8 @@ public struct JunkItem: Identifiable, Hashable, Sendable {
     public let root: URL
     /// Optional display detail (e.g. duplicate group info).
     public let detail: String?
+    /// Items sharing a group ID are identical copies (duplicates: the content SHA-256).
+    public let groupID: String?
 
     public var id: String { path.path }
 
@@ -28,7 +30,8 @@ public struct JunkItem: Identifiable, Hashable, Sendable {
         riskLevel: RiskLevel,
         modificationDate: Date? = nil,
         root: URL,
-        detail: String? = nil
+        detail: String? = nil,
+        groupID: String? = nil
     ) {
         self.path = path.standardizedFileURL
         self.size = size
@@ -37,6 +40,7 @@ public struct JunkItem: Identifiable, Hashable, Sendable {
         self.modificationDate = modificationDate
         self.root = root.standardizedFileURL
         self.detail = detail
+        self.groupID = groupID
     }
 
     /// Display path relative to the user's home directory where possible.

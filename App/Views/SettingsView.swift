@@ -31,7 +31,7 @@ struct SettingsView: View {
                 }
                 .accessibilityLabel("Large file threshold, \(model.largeFileMinimumMB) megabytes")
 
-                Text("Applies to the informational Large Files list. Broom never deletes large files itself — you review them and delete in Finder.")
+                Text("Files above this size appear under Large Files. They are never preselected.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

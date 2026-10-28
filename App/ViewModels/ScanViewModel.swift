@@ -7,7 +7,10 @@ import SwiftUI
 /// undo and settings. UI stays declarative; every mutation goes through here.
 ///
 /// Safety invariants enforced here (§5.2 / §6):
-/// - only categories with `isDeletable` can ever enter `selection`;
+/// - only categories with `canBeSelected` can ever enter `selection`; the user's own files
+///   (large files, duplicates) are never preselected;
+/// - every duplicate group keeps at least one unselected copy (and `SafeDeleter`
+///   re-verifies a surviving identical copy before each delete);
 /// - high-risk items are never preselected and require type-to-confirm;
 /// - cleaning streams progress and is cancellable between items;
 /// - "Undo" is offered for the last clean while its Trash entries still exist.
@@ -100,7 +103,7 @@ final class ScanViewModel: ObservableObject {
 
     var selectedItems: [JunkItem] {
         guard let report else { return [] }
-        return report.items.filter { selection.contains($0.id) && $0.category.isDeletable }
+        return report.items.filter { selection.contains($0.id) && $0.category.canBeSelected }
     }
 
     var selectedSize: Int64 {
@@ -200,31 +203,71 @@ final class ScanViewModel: ObservableObject {
     // MARK: Selection
 
     func toggle(_ item: JunkItem) {
-        guard item.category.isDeletable else { return }
+        guard item.category.canBeSelected else { return }
         if selection.contains(item.id) {
             selection.remove(item.id)
-        } else {
+        } else if canSelect(item) {
             selection.insert(item.id)
         }
     }
 
+    /// False for the last unselected copy of a duplicate group: one copy always stays.
+    func canSelect(_ item: JunkItem) -> Bool {
+        guard item.category.canBeSelected else { return false }
+        guard item.category == .duplicates else { return true }
+        return copies(of: item).contains { $0.id != item.id && !selection.contains($0.id) }
+    }
+
+    /// Duplicates' "Select All" picks every copy except one keeper per group.
     func selectAll(in category: JunkCategory, _ select: Bool) {
-        guard let report else { return }
-        for item in report.items where item.category == category && item.category.isDeletable {
+        for item in bulkEligible(in: category) {
             if select {
-                // High-risk items are never bulk-selected.
-                if item.riskLevel < .high { selection.insert(item.id) }
+                selection.insert(item.id)
             } else {
+                selection.remove(item.id)
+            }
+        }
+        if !select, category == .duplicates {
+            for item in (report?.items ?? []) where item.category == .duplicates {
                 selection.remove(item.id)
             }
         }
     }
 
     func isFullySelected(_ category: JunkCategory) -> Bool {
-        let eligible = (report?.items ?? []).filter {
-            $0.category == category && $0.category.isDeletable && $0.riskLevel < .high
-        }
+        let eligible = bulkEligible(in: category)
         return !eligible.isEmpty && eligible.allSatisfy { selection.contains($0.id) }
+    }
+
+    /// Items "Select All" may pick: never high-risk, never a duplicate group's keeper.
+    private func bulkEligible(in category: JunkCategory) -> [JunkItem] {
+        let items = (report?.items ?? []).filter {
+            $0.category == category && $0.category.canBeSelected && $0.riskLevel < .high
+        }
+        guard category == .duplicates else { return items }
+        return items.filter { !isKeeper($0) }
+    }
+
+    private func copies(of item: JunkItem) -> [JunkItem] {
+        guard let groupID = item.groupID else { return [item] }
+        return (report?.items ?? []).filter { $0.groupID == groupID }
+    }
+
+    /// The copy kept by "Select All": the oldest, so the original location wins.
+    private func isKeeper(_ item: JunkItem) -> Bool {
+        let keeper = copies(of: item).min { lhs, rhs in
+            let left = lhs.modificationDate ?? .distantFuture
+            let right = rhs.modificationDate ?? .distantFuture
+            return left != right ? left < right : lhs.id < rhs.id
+        }
+        return keeper?.id == item.id
+    }
+
+    /// Every path in each duplicate group, for the deleter's keep-one check.
+    private var duplicateGroups: [String: [URL]] {
+        let duplicates = (report?.items ?? []).filter { $0.category == .duplicates && $0.groupID != nil }
+        return Dictionary(grouping: duplicates) { $0.groupID ?? "" }
+            .mapValues { $0.map(\.path) }
     }
 
     // MARK: Cleaning
@@ -245,10 +288,15 @@ final class ScanViewModel: ObservableObject {
             phase = .review
             return
         }
-        let deleter = SafeDeleter(rules: rules, undoLog: undoLog)
+        let deleter = SafeDeleter(
+            rules: rules,
+            undoLog: undoLog,
+            userFiles: StorageAnalyzer(rules: rules)
+        )
+        let groups = duplicateGroups
 
         cleanTask = Task {
-            let result = await deleter.trash(items) { [weak self] progress in
+            let result = await deleter.trash(items, duplicateGroups: groups) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.cleanProgress = max(self?.cleanProgress ?? 0, progress.fractionCompleted)
                     self?.currentItemName = progress.currentItem?.displayPath ?? ""

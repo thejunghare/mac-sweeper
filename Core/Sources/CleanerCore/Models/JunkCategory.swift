@@ -49,6 +49,16 @@ public enum JunkCategory: String, CaseIterable, Sendable, Codable, Identifiable 
         }
     }
 
+    /// Your own files (large files, duplicates): never preselected and never touched by
+    /// the junk rules, but you may pick them yourself — `SafeDeleter` then applies the
+    /// Storage screen's user-file checks (and keeps one copy of every duplicate).
+    public var isUserChoice: Bool {
+        self == .largeFiles || self == .duplicates
+    }
+
+    /// Whether an item can be selected for cleaning at all.
+    public var canBeSelected: Bool { isDeletable || isUserChoice }
+
     public var displayName: String {
         switch self {
         case .userCaches: return "User Caches"
@@ -117,9 +127,9 @@ public enum JunkCategory: String, CaseIterable, Sendable, Codable, Identifiable 
         case .leftoverAppFiles:
             return "Preferences, caches and support files whose owning app is no longer installed. Only exact bundle-identifier matches are reported."
         case .largeFiles:
-            return "Files over the size threshold in your home folder. Informational only — the app never deletes these; you decide in Finder."
+            return "Files over the size threshold in your home folder. Never preselected — pick the ones you no longer need."
         case .duplicates:
-            return "Files with identical content (SHA-256). Hashes are computed locally and never leave this Mac. Informational only."
+            return "Files with identical content (SHA-256, computed locally). Broom always keeps at least one copy."
         }
     }
 }

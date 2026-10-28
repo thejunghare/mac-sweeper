@@ -68,8 +68,8 @@
 | `MailDownloadsScanner` | Mail Downloads/Attachments | medium | ✅ |
 | `SystemLogsScanner` | `/Library/Logs/DiagnosticReports` | medium | ✅ (failures reported, never forced) |
 | `LeftoverAppFilesScanner` | exact bundle-ID orphans in Library | medium | ✅ |
-| `LargeFilesScanner` | files over threshold | medium | ⛔ informational only |
-| `DuplicatesScanner` | SHA-256 groups (local hashes only) | medium | ⛔ informational only |
+| `LargeFilesScanner` | files over threshold | medium | ✅ user pick only (never preselected) |
+| `DuplicatesScanner` | SHA-256 groups (local hashes only) | medium | ✅ user pick only; one copy always kept |
 | `DeepestFileFinder` | deepest file under `~` + deletable verdict + removal suggestions | low/medium | ✅ suggestions via Deep Clean (Trash + undo) |
 
 ## Safety invariants (§5) — enforced in code, proven by tests

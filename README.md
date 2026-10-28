@@ -11,6 +11,8 @@ with safety as the core design constraint.
 - Scans (read-only, parallel): user/browser caches, app & system logs, Trash, Xcode
   junk (DerivedData/Archives/DeviceSupport), Homebrew cache, Mail downloads, iOS device
   backups, leftover files of uninstalled apps, large files, duplicates (SHA-256, local).
+  Large files and duplicates are never preselected; pick them yourself. Broom always
+  keeps one copy of every duplicate and re-checks it is identical before deleting.
 - Shows **exactly** what would be removed — path, size, last-modified, risk tier — before
   touching anything.
 - Deletes **only to the Trash** (never `rm`/`unlink`), with risk-tiered confirmation

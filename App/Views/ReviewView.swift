@@ -18,7 +18,11 @@ struct ReviewView: View {
                         if !items.isEmpty {
                             Section {
                                 ForEach(items) { item in
-                                    ItemRow(item: item, isSelected: model.selection.contains(item.id)) {
+                                    ItemRow(
+                                        item: item,
+                                        isSelected: model.selection.contains(item.id),
+                                        canSelect: model.canSelect(item)
+                                    ) {
                                         model.toggle(item)
                                     }
                                 }
@@ -42,13 +46,19 @@ struct ReviewView: View {
             Text(ByteFormat.string(model.size(in: category)))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            if category.isDeletable && category.riskLevel < .high {
+            if category.canBeSelected && category.riskLevel < .high {
                 let all = model.isFullySelected(category)
-                Button(all ? "Deselect" : "Select All") {
+                let title = category == .duplicates
+                    ? (all ? "Deselect copies" : "Select extra copies (keeps one of each)")
+                    : (all ? "Deselect all" : "Select all")
+                Button {
                     model.selectAll(in: category, !all)
+                } label: {
+                    Image(systemName: all ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .buttonStyle(.link)
-                .accessibilityLabel("\(all ? "Deselect" : "Select") all \(category.displayName)")
+                .buttonStyle(.borderless)
+                .help(title)
+                .accessibilityLabel("\(title), \(category.displayName)")
             }
         }
         .font(.subheadline)
@@ -80,12 +90,19 @@ struct ReviewView: View {
 struct ItemRow: View {
     let item: JunkItem
     let isSelected: Bool
+    /// False for the copy of a duplicate that must stay (the last unselected one).
+    let canSelect: Bool
     let onToggle: () -> Void
+
+    private var isLockedCopy: Bool { item.category == .duplicates && !isSelected && !canSelect }
 
     var body: some View {
         HStack(spacing: 10) {
             Group {
-                if item.category.isDeletable {
+                if isLockedCopy {
+                    Image(systemName: "lock.circle")
+                        .foregroundStyle(.secondary)
+                } else if item.category.canBeSelected {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                 } else {
@@ -113,15 +130,14 @@ struct ItemRow: View {
                 .monospacedDigit()
 
             FlagChip(flag: DeleteFlag(item))
-                .frame(width: 96, alignment: .leading)
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .onTapGesture { if item.category.isDeletable { onToggle() } }
-        .help(item.category.isDeletable ? item.displayPath : "Review it and delete it in Finder yourself")
+        .onTapGesture { if item.category.canBeSelected { onToggle() } }
+        .help(isLockedCopy ? "Kept — Broom always keeps one copy" : item.displayPath)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.path.lastPathComponent), \(ByteFormat.string(item.size))")
-        .accessibilityAddTraits(item.category.isDeletable ? .isButton : [])
-        .accessibilityValue(item.category.isDeletable ? (isSelected ? "Selected" : "Not selected") : "Can't delete")
+        .accessibilityAddTraits(item.category.canBeSelected ? .isButton : [])
+        .accessibilityValue(isLockedCopy ? "Kept copy" : (isSelected ? "Selected" : "Not selected"))
     }
 }

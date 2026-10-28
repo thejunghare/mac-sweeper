@@ -117,10 +117,16 @@ struct DeepestFileView: View {
                  : "Safe to remove · \(ByteFormat.string(model.suggestionsTotalSize))")
             Spacer()
             if !model.suggestions.isEmpty {
-                Button("Delete All…") { confirmDeleteAll = true }
-                    .buttonStyle(.link)
-                    .disabled(model.isDeletingSuggestions)
-                    .accessibilityLabel("Move all suggested files to the Trash")
+                Button {
+                    confirmDeleteAll = true
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
+                .disabled(model.isDeletingSuggestions)
+                .help("Move all to the Trash")
+                .accessibilityLabel("Move all suggested files to the Trash")
             }
         }
         .textCase(nil)

@@ -27,17 +27,29 @@ final class ScanViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testInformationalCategoriesAreNeverSelectableViaToggle() {
+    func testUserFilesCanBePickedButLastDuplicateCopyCannot() {
         let model = ScanViewModel()
+        let home = URL(fileURLWithPath: "/Users/test")
         let bigFile = JunkItem(
-            path: URL(fileURLWithPath: "/Users/test/Downloads/big.zip"),
+            path: home.appendingPathComponent("Downloads/big.zip"),
             size: 1_000_000,
             category: .largeFiles,
             riskLevel: .medium,
-            root: URL(fileURLWithPath: "/Users/test")
+            root: home
         )
         model.toggle(bigFile)
-        XCTAssertTrue(model.selection.isEmpty, "informational items must never enter the selection")
-        XCTAssertEqual(model.selectedCount, 0)
+        XCTAssertTrue(model.selection.contains(bigFile.id), "large files can be picked by the user")
+
+        // A duplicate with no other known copy is the last copy — never selectable.
+        let loneCopy = JunkItem(
+            path: home.appendingPathComponent("Downloads/a.bin"),
+            size: 10,
+            category: .duplicates,
+            riskLevel: .medium,
+            root: home,
+            groupID: "g1"
+        )
+        model.toggle(loneCopy)
+        XCTAssertFalse(model.selection.contains(loneCopy.id))
     }
 }

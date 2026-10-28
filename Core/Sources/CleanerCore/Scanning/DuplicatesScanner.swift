@@ -1,7 +1,8 @@
 import CryptoKit
 import Foundation
 
-/// Hash-based duplicate finder (§4, INFORMATIONAL ONLY — `isDeletable == false`).
+/// Hash-based duplicate finder (§4). Never auto-selected: the user picks extra copies,
+/// and `SafeDeleter` always keeps at least one verified copy of every group.
 ///
 /// Privacy (§5.5): SHA-256 hashes are computed locally and never transmitted; file
 /// *contents* are never returned by the scanner, only paths/sizes.
@@ -86,7 +87,8 @@ public struct DuplicatesScanner: Scanner {
                         riskLevel: .medium,
                         modificationDate: ScanSupport.modificationDate(of: url),
                         root: context.homeDirectory,
-                        detail: "\(count) identical copies · \(shortHash)"
+                        detail: "\(count) identical copies · \(shortHash)",
+                        groupID: hash
                     )
                 )
             }

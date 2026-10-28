@@ -2,26 +2,24 @@ import AppKit
 import CleanerCore
 import SwiftUI
 
-/// The one status shown on every file row: symbol + two words. Colour is never the only
-/// signal (§12.5); the longer "why" lives in the row's tooltip.
+/// The one status shown on every row: an icon only. Colour is never the only signal —
+/// each flag has its own symbol shape (§12.5) — and the words are in the tooltip and
+/// VoiceOver label.
 struct FlagChip: View {
     let flag: DeleteFlag
 
     var body: some View {
-        Label {
-            Text(title).foregroundStyle(.secondary)
-        } icon: {
-            Image(systemName: symbol).foregroundStyle(tint)
-        }
-        .font(.caption)
-        .fixedSize()
-        .accessibilityLabel(title)
+        Image(systemName: symbol)
+            .foregroundStyle(tint)
+            .imageScale(.medium)
+            .help(title)
+            .accessibilityLabel(title)
     }
 
     private var title: String {
         switch flag {
-        case .safe: return "Safe"
-        case .checkFirst: return "Check first"
+        case .safe: return "Safe to delete"
+        case .checkFirst: return "Check before deleting"
         case .cannotDelete: return "Can't delete"
         }
     }
@@ -44,9 +42,11 @@ struct FlagChip: View {
 }
 
 extension DeleteFlag {
-    /// Flag for a scan result: informational categories are never deleted in-app.
+    /// Flag for a scan result: your own files (large files, duplicates) are "check first".
     init(_ item: JunkItem) {
-        if !item.category.isDeletable {
+        if item.category.isUserChoice {
+            self = .checkFirst
+        } else if !item.category.isDeletable {
             self = .cannotDelete
         } else {
             self = item.riskLevel == .low ? .safe : .checkFirst
@@ -99,7 +99,6 @@ struct FileRow: View {
                 .monospacedDigit()
 
             FlagChip(flag: flag)
-                .frame(width: 96, alignment: .leading)
 
             Button {
                 onDelete?()
