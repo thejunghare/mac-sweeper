@@ -52,12 +52,13 @@ struct PrivacyView: View {
                     )
 
                     principle(
-                        title: "Deepest File lookup",
+                        title: "Deep Clean",
                         body: """
                             Only when you open it, Broom walks your home folder reading file \
                             names and depth (never contents) to find the most deeply nested \
-                            file, and tells you whether its safety rules would allow deleting \
-                            it. Nothing is deleted from that screen.
+                            file and suggest cache, log and build files that are safe to \
+                            remove. Delete there means Move to Trash — each file is \
+                            re-checked first, backups are never suggested, and Undo is offered.
                             """
                     )
 

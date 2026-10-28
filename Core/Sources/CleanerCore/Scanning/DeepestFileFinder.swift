@@ -1,9 +1,9 @@
 import Foundation
 
-/// Finds the single most deeply nested regular file under a root and tells the user
-/// whether Broom may delete it.
+/// Walks the home folder, finds the single most deeply nested regular file, tells the user
+/// whether Broom may delete it, and suggests other files that are safe to remove.
 ///
-/// This is the in-app equivalent of the Terminal one-liner
+/// The deepest-file part is the in-app equivalent of the Terminal one-liner
 /// `find ~ -type f | awk -F/ '{print NF, $0}' | sort -n | tail -1`, with the same
 /// read-only guarantees as every scanner:
 /// - never creates, modifies or deletes anything;
@@ -11,8 +11,9 @@ import Foundation
 /// - unreadable directories are counted and skipped, never fatal;
 /// - cancellable between entries.
 ///
-/// The deepest file is *informational*: the verdict explains whether it lives in a location
-/// Broom cleans, but the finder never hands anything to the deletion engine.
+/// Suggestions are files inside a junk location (caches, logs, Xcode/Homebrew data, …) that
+/// pass every delete-time gate. Deleting them still goes through `SafeDeleter`, which
+/// re-validates each one — a suggestion is never trusted on its own.
 public struct DeepestFileFinder: Sendable {
 
     /// Whether Broom could move a given file to the Trash, and why (or why not).
@@ -29,6 +30,16 @@ public struct DeepestFileFinder: Sendable {
         }
     }
 
+    /// A file Broom suggests removing: in a junk location, low or medium risk, and cleared
+    /// by the rules engine, the symlink guard and the filesystem's permission check.
+    public struct Suggestion: Sendable, Hashable, Identifiable {
+        public let item: JunkItem
+        /// Path components below the searched root.
+        public let depth: Int
+
+        public var id: String { item.id }
+    }
+
     public struct Result: Sendable, Equatable {
         public let path: URL
         /// Path components below the searched root (a direct child has depth 1).
@@ -41,17 +52,25 @@ public struct DeepestFileFinder: Sendable {
         public let filesExamined: Int
         /// Directories that could not be read (usually missing Full Disk Access).
         public let unreadableDirectories: Int
+        /// Safe-to-remove files, deepest first (bounded by `suggestionLimit`).
+        public let suggestions: [Suggestion]
 
         public var displayPath: String { homeRelativePath(path) }
     }
 
     private let rules: RulesEngine
     private let fileManager: FileManager
+    private let suggestionLimit: Int
     private let pathGuard = SymlinkGuard()
 
-    public init(rules: RulesEngine = RulesEngine(), fileManager: FileManager = .default) {
+    public init(
+        rules: RulesEngine = RulesEngine(),
+        fileManager: FileManager = .default,
+        suggestionLimit: Int = 200
+    ) {
         self.rules = rules
         self.fileManager = fileManager
+        self.suggestionLimit = suggestionLimit
     }
 
     /// Walks `root` (default: the rules engine's home directory). Returns `nil` when no
@@ -80,6 +99,7 @@ public struct DeepestFileFinder: Sendable {
         var deepest: (url: URL, depth: Int)?
         var ties = 0
         var examined = 0
+        var candidates: [(url: URL, depth: Int)] = []
 
         for case let url as URL in enumerator {
             if Task.isCancelled { break }
@@ -92,6 +112,16 @@ public struct DeepestFileFinder: Sendable {
             if examined % 2_000 == 0 { progress?(examined) }
 
             let depth = enumerator.level
+
+            // Cheap, string-only location check while walking; the full delete-time gates
+            // run later on the bounded shortlist only.
+            if case .junk = classify(url.standardizedFileURL.path) {
+                candidates.append((url, depth))
+                if candidates.count > suggestionLimit * 4 {
+                    candidates = shortlist(candidates)
+                }
+            }
+
             if let current = deepest {
                 if depth < current.depth { continue }
                 if depth == current.depth {
@@ -118,7 +148,8 @@ public struct DeepestFileFinder: Sendable {
             verdict: verdict(for: best.url),
             otherFilesAtSameDepth: ties,
             filesExamined: examined,
-            unreadableDirectories: unreadable.value
+            unreadableDirectories: unreadable.value,
+            suggestions: makeSuggestions(from: shortlist(candidates))
         )
     }
 
@@ -138,6 +169,38 @@ public struct DeepestFileFinder: Sendable {
         }
     }
 
+    // MARK: - Suggestions
+
+    /// Deepest first, then alphabetical, capped at `suggestionLimit`.
+    private func shortlist(_ candidates: [(url: URL, depth: Int)]) -> [(url: URL, depth: Int)] {
+        let sorted = candidates.sorted {
+            $0.depth != $1.depth ? $0.depth > $1.depth : $0.url.path < $1.url.path
+        }
+        return Array(sorted.prefix(suggestionLimit))
+    }
+
+    private func makeSuggestions(from candidates: [(url: URL, depth: Int)]) -> [Suggestion] {
+        candidates.compactMap { candidate in
+            let url = candidate.url.standardizedFileURL
+            // High-risk data (device backups) is never offered for one-click removal.
+            guard case let .junk(category, root) = classify(url.path),
+                  category.riskLevel < .high else { return nil }
+            let values = try? url.resourceValues(
+                forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey, .contentModificationDateKey]
+            )
+            let item = JunkItem(
+                path: url,
+                size: Int64(values?.totalFileAllocatedSize ?? values?.fileSize ?? 0),
+                category: category,
+                riskLevel: category.riskLevel,
+                modificationDate: values?.contentModificationDate,
+                root: root
+            )
+            guard deleteGateFailure(for: item) == nil else { return nil }
+            return Suggestion(item: item, depth: candidate.depth)
+        }
+    }
+
     // MARK: - Deletion verdict
 
     /// Categories a loose file can be attributed to by location alone. Excluded:
@@ -149,21 +212,22 @@ public struct DeepestFileFinder: Sendable {
         $0.isDeletable && $0 != .trash && $0 != .leftoverAppFiles
     }
 
-    /// Applies the same gates as `SafeDeleter` (rules engine + symlink guard) plus the
-    /// filesystem's own permission check, without deleting anything.
-    public func verdict(for fileURL: URL) -> Verdict {
-        let url = fileURL.standardizedFileURL
-        let path = url.path
+    private enum Location {
+        case junk(JunkCategory, root: URL)
+        case refused(String)
+    }
 
+    /// Where a path sits, judged by location alone (pure string checks, no disk access).
+    private func classify(_ path: String) -> Location {
         if let denied = rules.hardDenylist.first(where: { path == $0 || path.hasPrefix($0 + "/") }) {
-            return .no("System location (\(denied)) — on Broom's hard denylist, never deleted.")
+            return .refused("System location (\(denied)) — on Broom's hard denylist, never deleted.")
         }
         if let protected = rules.protectedHomeRoots.first(where: { path == $0 || path.hasPrefix($0 + "/") }) {
             let name = (protected as NSString).lastPathComponent
-            return .no("Inside your \(name) folder — Broom never deletes your own documents.")
+            return .refused("Inside your \(name) folder — Broom never deletes your own documents.")
         }
         if rules.allowedRoots(for: .trash).contains(where: { path.hasPrefix($0.standardizedFileURL.path + "/") }) {
-            return .no("Already in the Trash — empty the Trash in Finder to remove it permanently.")
+            return .refused("Already in the Trash — empty the Trash in Finder to remove it permanently.")
         }
 
         // Most specific matching root wins (e.g. Homebrew cache beats the generic Caches sweep).
@@ -177,34 +241,47 @@ public struct DeepestFileFinder: Sendable {
             }
         }
         guard let match else {
-            return .no(
+            return .refused(
                 "Not in a junk location Broom cleans — review it and delete it yourself " +
                 "in Finder if you no longer need it."
             )
         }
+        return .junk(match.category, root: match.root)
+    }
 
-        let item = JunkItem(
-            path: url,
-            size: 0,
-            category: match.category,
-            riskLevel: match.category.riskLevel,
-            root: match.root
-        )
+    /// The same gates `SafeDeleter` applies (rules engine + symlink guard) plus the
+    /// filesystem's own permission check. Returns `nil` when all pass.
+    private func deleteGateFailure(for item: JunkItem) -> String? {
         guard rules.mayDelete(item) else {
-            return .no("Rejected by Broom's safety rules.")
+            return "Rejected by Broom's safety rules."
         }
         if let rejection = pathGuard.rejectionReason(for: item, fileManager: fileManager) {
-            return .no("Path safety check failed (\(rejection)).")
+            return "Path safety check failed (\(rejection))."
         }
-        guard fileManager.isDeletableFile(atPath: path) else {
-            return .no("macOS permissions don't allow removing it (owned by another user or protected).")
+        guard fileManager.isDeletableFile(atPath: item.path.path) else {
+            return "macOS permissions don't allow removing it (owned by another user or protected)."
         }
-        return Verdict(
-            canDelete: true,
-            category: match.category,
-            riskLevel: match.category.riskLevel,
-            reason: "Inside \(match.category.displayName) — Broom can move it to the Trash."
-        )
+        return nil
+    }
+
+    /// Whether Broom may delete `fileURL`, with the reason. Never deletes anything.
+    public func verdict(for fileURL: URL) -> Verdict {
+        let url = fileURL.standardizedFileURL
+        switch classify(url.path) {
+        case .refused(let reason):
+            return .no(reason)
+        case let .junk(category, root):
+            let item = JunkItem(path: url, size: 0, category: category, riskLevel: category.riskLevel, root: root)
+            if let failure = deleteGateFailure(for: item) {
+                return .no(failure)
+            }
+            return Verdict(
+                canDelete: true,
+                category: category,
+                riskLevel: category.riskLevel,
+                reason: "Inside \(category.displayName) — Broom can move it to the Trash."
+            )
+        }
     }
 }
 

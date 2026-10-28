@@ -39,6 +39,18 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var deepestFileFilesExamined = 0
     @Published private(set) var hasSearchedDeepestFile = false
 
+    /// Safe-to-remove files found by the deepest-file walk, with one-click Trash + undo.
+    @Published private(set) var suggestions: [DeepestFileFinder.Suggestion] = []
+    @Published private(set) var isDeletingSuggestions = false
+    @Published private(set) var suggestionMessage: String?
+    /// Paths moved to the Trash from the suggestions list (cleared again on undo).
+    @Published private(set) var trashedSuggestionPaths: Set<String> = []
+    private var lastSuggestionDelete: (cleanID: UUID, items: [DeepestFileFinder.Suggestion])?
+
+    var canUndoSuggestionDelete: Bool { lastSuggestionDelete != nil && !isDeletingSuggestions }
+
+    var suggestionsTotalSize: Int64 { suggestions.reduce(0) { $0 + $1.item.size } }
+
     /// Paths selected for cleaning.
     @Published var selection: Set<String> = []
     @Published var searchText: String = ""
@@ -301,6 +313,10 @@ final class ScanViewModel: ObservableObject {
         isFindingDeepestFile = true
         deepestFile = nil
         deepestFileFilesExamined = 0
+        suggestions = []
+        suggestionMessage = nil
+        trashedSuggestionPaths = []
+        lastSuggestionDelete = nil
 
         let finder = DeepestFileFinder()
         deepestFileTask = Task {
@@ -313,6 +329,7 @@ final class ScanViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             self.isFindingDeepestFile = false
             self.deepestFile = result
+            self.suggestions = result?.suggestions ?? []
             self.hasSearchedDeepestFile = true
         }
         await deepestFileTask?.value
@@ -327,6 +344,61 @@ final class ScanViewModel: ObservableObject {
     func revealDeepestFileInFinder() {
         guard let deepestFile else { return }
         NSWorkspace.shared.activateFileViewerSelecting([deepestFile.path])
+    }
+
+    /// Moves the given suggestions to the Trash right away (recoverable; undo offered).
+    /// `SafeDeleter` re-runs every safety gate per file, so a stale suggestion is skipped,
+    /// never forced.
+    func deleteSuggestions(_ toDelete: [DeepestFileFinder.Suggestion]) async {
+        guard !toDelete.isEmpty, !isDeletingSuggestions, phase != .cleaning else { return }
+        isDeletingSuggestions = true
+        defer { isDeletingSuggestions = false }
+
+        let undoLog: UndoLog
+        do {
+            undoLog = try UndoLog()
+        } catch {
+            suggestionMessage = "Could not open the undo log: \(error.localizedDescription)"
+            return
+        }
+        let deleter = SafeDeleter(rules: RulesEngine(), undoLog: undoLog)
+        let outcome = await deleter.trash(toDelete.map(\.item))
+
+        let trashedIDs = Set(outcome.trashed.map { $0.item.id })
+        suggestions.removeAll { trashedIDs.contains($0.id) }
+        trashedSuggestionPaths.formUnion(trashedIDs)
+        lastSuggestionDelete = trashedIDs.isEmpty
+            ? nil
+            : (outcome.cleanID, toDelete.filter { trashedIDs.contains($0.id) })
+
+        var message = "Moved \(outcome.trashed.count) file\(outcome.trashed.count == 1 ? "" : "s") " +
+            "(\(ByteFormat.string(outcome.freedBytes))) to the Trash."
+        if let failure = outcome.failures.first {
+            message += " \(outcome.failures.count) skipped: \(failure.reason)"
+        }
+        suggestionMessage = message
+    }
+
+    func undoSuggestionDelete() async {
+        guard let last = lastSuggestionDelete else { return }
+        do {
+            let log = try UndoLog()
+            let entries = await log.all().filter { $0.cleanID == last.cleanID }
+            let result = UndoRestorer().restore(entries)
+            let restoredPaths = Set(result.restored.map(\.originalPath))
+
+            suggestions.append(contentsOf: last.items.filter { restoredPaths.contains($0.id) })
+            suggestions.sort { $0.depth != $1.depth ? $0.depth > $1.depth : $0.id < $1.id }
+            trashedSuggestionPaths.subtract(restoredPaths)
+            lastSuggestionDelete = nil
+
+            suggestionMessage = "Restored \(result.restored.count) file\(result.restored.count == 1 ? "" : "s")."
+            if let skipped = result.skipped.first {
+                suggestionMessage? += " \(result.skipped.count) could not be restored: \(skipped.reason)"
+            }
+        } catch {
+            suggestionMessage = error.localizedDescription
+        }
     }
 
     // MARK: Permission UX (§5.1)

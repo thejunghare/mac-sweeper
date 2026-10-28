@@ -64,9 +64,9 @@ struct ContentView: View {
                 Button {
                     showDeepestFile = true
                 } label: {
-                    Label("Deepest File", systemImage: "arrow.down.to.line")
+                    Label("Deep Clean", systemImage: "arrow.down.to.line")
                 }
-                .accessibilityLabel("Find the most deeply nested file and whether Broom can delete it")
+                .accessibilityLabel("Deep Clean: find the deepest file and files that are safe to remove")
 
                 Button {
                     showPrivacy = true

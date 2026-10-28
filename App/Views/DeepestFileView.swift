@@ -1,17 +1,38 @@
+import AppKit
 import CleanerCore
 import SwiftUI
 
-/// Shows the most deeply nested file in the home folder with a clear
-/// "Can delete" / "Can't delete" flag and the reason behind it.
-/// Informational only: nothing here deletes — cleaning stays behind the review flow (§5.2).
+/// "Deep Clean": walks the home folder, shows the most deeply nested file with a clear
+/// "Can delete" / "Can't delete" flag, and lists files that are safe to remove — each with
+/// a direct Delete button.
+///
+/// Safety (§5.2): Delete always means *Move to Trash* (recoverable, with Undo here), every
+/// file is re-validated by `SafeDeleter` at delete time, high-risk data is never offered,
+/// and bulk "Delete All" asks once before acting.
 struct DeepestFileView: View {
     @EnvironmentObject private var model: ScanViewModel
     @Environment(\.dismiss) private var dismiss
 
+    private enum SortOrder: String, CaseIterable, Identifiable {
+        case deepest = "Deepest"
+        case largest = "Largest"
+        var id: String { rawValue }
+    }
+
+    @State private var sortOrder: SortOrder = .deepest
+    @State private var confirmDeleteAll = false
+
+    private var sortedSuggestions: [DeepestFileFinder.Suggestion] {
+        switch sortOrder {
+        case .deepest: return model.suggestions
+        case .largest: return model.suggestions.sorted { $0.item.size > $1.item.size }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Deepest File", systemImage: "arrow.down.to.line")
+                Label("Deep Clean", systemImage: "arrow.down.to.line")
                     .font(.title3.weight(.semibold))
                 Spacer()
             }
@@ -20,50 +41,36 @@ struct DeepestFileView: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 16) {
-                Text("""
-                    Walks your home folder — like `find ~ -type f` in Terminal — and shows \
-                    the most deeply nested file, plus whether Broom is allowed to delete it. \
-                    Read-only: nothing is changed.
-                    """)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                content
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             Divider()
 
-            HStack {
-                if model.isFindingDeepestFile {
-                    Button("Cancel") { model.cancelDeepestFileSearch() }
-                        .keyboardShortcut(.cancelAction)
-                } else {
-                    Button(model.hasSearchedDeepestFile ? "Search Again" : "Find Deepest File") {
-                        Task { await model.findDeepestFile() }
-                    }
-                }
-                Spacer()
-                Button("Done") {
-                    model.cancelDeepestFileSearch()
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding()
-            .glassBar()
+            footer
         }
-        .frame(width: 600, height: 480)
+        .frame(width: 720, height: 680)
         .onAppear {
             if !model.hasSearchedDeepestFile && !model.isFindingDeepestFile {
                 Task { await model.findDeepestFile() }
             }
         }
+        .alert(
+            "Move \(model.suggestions.count) files to the Trash?",
+            isPresented: $confirmDeleteAll
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                Task { await model.deleteSuggestions(model.suggestions) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("""
+                \(ByteFormat.string(model.suggestionsTotalSize)) of cache, log and build files. \
+                They stay in the Trash until you empty it, and you can Undo here.
+                """)
+        }
     }
+
+    // MARK: Content
 
     @ViewBuilder
     private var content: some View {
@@ -78,7 +85,25 @@ struct DeepestFileView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .accessibilityElement(children: .combine)
         } else if let result = model.deepestFile {
-            resultCard(result)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("""
+                        Walks your home folder — like `find ~ -type f` in Terminal — shows the \
+                        most deeply nested file, and suggests files that are safe to remove.
+                        """)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let message = model.suggestionMessage {
+                        messageBanner(message)
+                    }
+
+                    resultCard(result)
+                    suggestionsSection
+                }
+                .padding(20)
+            }
         } else if model.hasSearchedDeepestFile {
             Text("No files found in your home folder.")
                 .foregroundStyle(.secondary)
@@ -86,10 +111,62 @@ struct DeepestFileView: View {
         }
     }
 
+    private var footer: some View {
+        HStack {
+            if model.isFindingDeepestFile {
+                Button("Cancel") { model.cancelDeepestFileSearch() }
+                    .keyboardShortcut(.cancelAction)
+            } else {
+                Button(model.hasSearchedDeepestFile ? "Search Again" : "Find Deepest File") {
+                    Task { await model.findDeepestFile() }
+                }
+                .disabled(model.isDeletingSuggestions)
+            }
+            Spacer()
+            Button("Done") {
+                model.cancelDeepestFileSearch()
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding()
+        .glassBar()
+    }
+
+    private func messageBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            if model.canUndoSuggestionDelete {
+                Button {
+                    Task { await model.undoSuggestionDelete() }
+                } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                }
+                .accessibilityLabel("Undo: put the files back from the Trash")
+            }
+        }
+        .padding(12)
+        .glassCard()
+    }
+
+    // MARK: Deepest file
+
     private func resultCard(_ result: DeepestFileFinder.Result) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let isTrashed = model.trashedSuggestionPaths.contains(result.path.path)
+        let suggestion = model.suggestions.first { $0.id == result.path.path }
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
+                    Text("Deepest file")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                     Text(result.path.lastPathComponent)
                         .font(.headline)
                         .lineLimit(1)
@@ -100,7 +177,13 @@ struct DeepestFileView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                DeletableFlag(canDelete: result.verdict.canDelete)
+                if isTrashed {
+                    Label("In Trash", systemImage: "trash")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    DeletableFlag(canDelete: result.verdict.canDelete)
+                }
             }
 
             Text(result.verdict.reason)
@@ -129,10 +212,22 @@ struct DeepestFileView: View {
                 .foregroundStyle(.secondary)
             }
 
-            Button {
-                model.revealDeepestFileInFinder()
-            } label: {
-                Label("Reveal in Finder", systemImage: "folder")
+            HStack {
+                if let suggestion, !isTrashed {
+                    Button(role: .destructive) {
+                        Task { await model.deleteSuggestions([suggestion]) }
+                    } label: {
+                        Label("Move to Trash", systemImage: "trash")
+                    }
+                    .disabled(model.isDeletingSuggestions)
+                }
+                if !isTrashed {
+                    Button {
+                        model.revealDeepestFileInFinder()
+                    } label: {
+                        Label("Reveal in Finder", systemImage: "folder")
+                    }
+                }
             }
             .buttonStyle(.bordered)
         }
@@ -169,6 +264,115 @@ struct DeepestFileView: View {
         }
         .font(.caption)
         .monospacedDigit()
+    }
+
+    // MARK: Suggestions
+
+    private var suggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Suggested to remove")
+                        .font(.headline)
+                    Text(model.suggestions.isEmpty
+                         ? "Nothing to suggest — no removable cache, log or build files found."
+                         : "\(model.suggestions.count) files · \(ByteFormat.string(model.suggestionsTotalSize)) · " +
+                            "regenerated automatically or safe to lose")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !model.suggestions.isEmpty {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(SortOrder.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 160)
+                    .accessibilityLabel("Sort suggestions")
+
+                    Button(role: .destructive) {
+                        confirmDeleteAll = true
+                    } label: {
+                        Label("Delete All…", systemImage: "trash")
+                    }
+                    .disabled(model.isDeletingSuggestions)
+                    .accessibilityLabel("Move all suggested files to the Trash")
+                }
+            }
+
+            if model.isDeletingSuggestions {
+                ProgressView("Moving to Trash…")
+                    .controlSize(.small)
+            }
+
+            LazyVStack(spacing: 0) {
+                ForEach(sortedSuggestions) { suggestion in
+                    SuggestionRow(suggestion: suggestion)
+                    Divider()
+                }
+            }
+        }
+    }
+}
+
+/// One suggested file: name, path, category, risk, size, and its direct Delete button.
+private struct SuggestionRow: View {
+    @EnvironmentObject private var model: ScanViewModel
+    let suggestion: DeepestFileFinder.Suggestion
+
+    private var item: JunkItem { suggestion.item }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: item.category.symbolName)
+                .foregroundStyle(riskColor(item.riskLevel))
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.path.lastPathComponent)
+                    .lineLimit(1)
+                Text(item.displayPath)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("\(item.category.displayName) · depth \(suggestion.depth)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            RiskBadge(risk: item.riskLevel)
+
+            Text(ByteFormat.string(item.size))
+                .font(.callout)
+                .monospacedDigit()
+                .frame(minWidth: 70, alignment: .trailing)
+
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([item.path])
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(item.path.lastPathComponent) in Finder")
+
+            Button(role: .destructive) {
+                Task { await model.deleteSuggestions([suggestion]) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isDeletingSuggestions)
+            .help("Move to Trash (you can undo)")
+            .accessibilityLabel("Move \(item.path.lastPathComponent) to the Trash")
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
     }
 }
 

@@ -119,4 +119,59 @@ final class DeepestFileFinderTests: XCTestCase {
 
         XCTAssertEqual(try Data(contentsOf: file), before)
     }
+
+    // MARK: Suggestions
+
+    func testSuggestsOnlyFilesInJunkLocations() throws {
+        let home = try FixtureTree.makeHomeLayout()
+        try home.createFile("Documents/notes/todo.txt")
+
+        let result = try XCTUnwrap(finder(for: home).find())
+        let names = Set(result.suggestions.map { $0.item.path.lastPathComponent })
+        XCTAssertEqual(names, ["blob.bin", "pkg.tar", "page.bin", "app.log"])
+        XCTAssertTrue(result.suggestions.allSatisfy { $0.item.category.isDeletable })
+        XCTAssertEqual(
+            result.suggestions.first { $0.item.path.lastPathComponent == "pkg.tar" }?.item.category,
+            .homebrewCache
+        )
+    }
+
+    func testSuggestionsAreDeepestFirstAndBounded() throws {
+        let home = try FixtureTree(name: "bounded")
+        for index in 0..<10 {
+            try home.createFile("Library/Caches/app\(index)/" + String(repeating: "d/", count: index) + "f.bin")
+        }
+
+        let sut = DeepestFileFinder(rules: RulesEngine(homeDirectory: home.root), suggestionLimit: 3)
+        let result = try XCTUnwrap(sut.find())
+        XCTAssertEqual(result.suggestions.count, 3)
+        XCTAssertEqual(result.suggestions.map(\.depth), [13, 12, 11])
+    }
+
+    func testHighRiskBackupsAreNeverSuggested() throws {
+        let home = try FixtureTree(name: "backups")
+        try home.createFile("Library/Application Support/MobileSync/Backup/device/aa/blob")
+
+        let result = try XCTUnwrap(finder(for: home).find())
+        XCTAssertTrue(result.suggestions.isEmpty)
+    }
+
+    func testSuggestionsCanBeTrashedBySafeDeleter() async throws {
+        let home = try FixtureTree.makeHomeLayout()
+        let rules = RulesEngine(homeDirectory: home.root)
+        let result = try XCTUnwrap(DeepestFileFinder(rules: rules).find())
+        let items = result.suggestions.map(\.item)
+        XCTAssertFalse(items.isEmpty)
+
+        let undoLog = try UndoLog(directory: makeTempDirectory())
+        let outcome = await SafeDeleter(rules: rules, undoLog: undoLog).trash(items)
+
+        XCTAssertEqual(outcome.trashed.count, items.count, "\(outcome.failures.map(\.reason))")
+        for item in items {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: item.path.path))
+        }
+        // Put them back so the real Trash isn't left with fixture files.
+        let entries = await undoLog.all()
+        _ = UndoRestorer().restore(entries)
+    }
 }

@@ -70,7 +70,7 @@
 | `LeftoverAppFilesScanner` | exact bundle-ID orphans in Library | medium | ✅ |
 | `LargeFilesScanner` | files over threshold | medium | ⛔ informational only |
 | `DuplicatesScanner` | SHA-256 groups (local hashes only) | medium | ⛔ informational only |
-| `DeepestFileFinder` | most deeply nested file under `~` + deletable verdict | — | ⛔ informational only (flag only) |
+| `DeepestFileFinder` | deepest file under `~` + deletable verdict + removal suggestions | low/medium | ✅ suggestions via Deep Clean (Trash + undo) |
 
 ## Safety invariants (§5) — enforced in code, proven by tests
 
