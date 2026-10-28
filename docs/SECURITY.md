@@ -32,7 +32,17 @@ Developer ID — PLAN.md §10). It is therefore **not App Sandboxed** and instea
 | Never overwrite a reoccupied path during undo | `UndoRestorer` | `testUndoRefusesToOverwriteReoccupiedPath` |
 | Scanner bugs cannot surface denylisted paths | `ScanEngine` filters all results through `RulesEngine` | `testEngineFiltersDenylistedScannerOutput` |
 | No `rm -rf`, no shell string interpolation | Code contains no `Process` calls | grep in review |
+| Storage screen: user-chosen items only, Trash only, flag recomputed from disk at delete time; never system paths, SIP-restricted items, the Trash, Photos/Mail libraries, other apps' containers, or the folders that hold everything (home, Library, Documents, …) | `StorageAnalyzer.flag(for:)` + `StorageDeleter` | `StorageAnalyzerTests` |
 | No fake system alerts / scare copy | Copy review in `WelcomeView`, `PrivacyView` | manual QA checklist |
+
+### User-directed deletion (Storage screen)
+
+The rules above govern what *scanners* may propose. The Storage screen is different: the
+user picks one item (or "Delete All Safe") themselves, like Finder's Move to Trash, so their
+own files and apps under `/Applications` and `~/Documents` can be deleted there. The
+safeguards: only one item per click (bulk only for "Safe to delete" items), a confirmation
+for anything flagged "Check first", Trash instead of unlink, the flag recomputed by
+`StorageDeleter` immediately before each move, `SymlinkGuard`, and Undo.
 
 ## Permission model
 

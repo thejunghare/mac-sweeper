@@ -203,15 +203,6 @@ public struct DeepestFileFinder: Sendable {
 
     // MARK: - Deletion verdict
 
-    /// Categories a loose file can be attributed to by location alone. Excluded:
-    /// - informational categories (never deleted in-app);
-    /// - Trash (the deleter never purges it — the user empties the Trash);
-    /// - leftover app files: being under `~/Library/Application Support` is not enough,
-    ///   the owning app must be uninstalled, which only `LeftoverAppFilesScanner` can tell.
-    static let locationCategories: [JunkCategory] = JunkCategory.allCases.filter {
-        $0.isDeletable && $0 != .trash && $0 != .leftoverAppFiles
-    }
-
     private enum Location {
         case junk(JunkCategory, root: URL)
         case refused(String)
@@ -230,17 +221,7 @@ public struct DeepestFileFinder: Sendable {
             return .refused("Already in the Trash — empty the Trash in Finder to remove it permanently.")
         }
 
-        // Most specific matching root wins (e.g. Homebrew cache beats the generic Caches sweep).
-        var match: (category: JunkCategory, root: URL)?
-        for category in Self.locationCategories {
-            for root in rules.allowedRoots(for: category) {
-                let rootPath = root.standardizedFileURL.path
-                guard path.hasPrefix(rootPath + "/") else { continue }
-                if let current = match, current.root.path.count >= rootPath.count { continue }
-                match = (category, root.standardizedFileURL)
-            }
-        }
-        guard let match else {
+        guard let match = rules.junkLocation(for: path) else {
             return .refused(
                 "Not in a junk location Broom cleans — review it and delete it yourself " +
                 "in Finder if you no longer need it."

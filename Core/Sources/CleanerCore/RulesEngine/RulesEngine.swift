@@ -174,6 +174,31 @@ public struct RulesEngine: Sendable {
         return .allow(item.category.riskLevel)
     }
 
+    /// Categories a loose path can be attributed to by location alone. Excluded:
+    /// - informational categories (never deleted in-app);
+    /// - Trash (the deleter never purges it — the user empties the Trash);
+    /// - leftover app files: being under `~/Library/Application Support` is not enough,
+    ///   the owning app must be uninstalled, which only `LeftoverAppFilesScanner` can tell.
+    public static let locationCategories: [JunkCategory] = JunkCategory.allCases.filter {
+        $0.isDeletable && $0 != .trash && $0 != .leftoverAppFiles
+    }
+
+    /// The junk category (and its root) a path lies strictly inside, judged by location
+    /// alone — pure string checks, no disk access. The most specific root wins (e.g. the
+    /// Homebrew cache beats the generic `~/Library/Caches` sweep).
+    public func junkLocation(for path: String) -> (category: JunkCategory, root: URL)? {
+        var match: (category: JunkCategory, root: URL)?
+        for category in Self.locationCategories {
+            for root in allowedRoots(for: category) {
+                let rootPath = root.standardizedFileURL.path
+                guard path.hasPrefix(rootPath + "/") else { continue }
+                if let current = match, current.root.path.count >= rootPath.count { continue }
+                match = (category, root.standardizedFileURL)
+            }
+        }
+        return match
+    }
+
     /// Delete-time gate: everything from `validate`, plus the category must be deletable
     /// at all. Called immediately before every `trashItem`.
     public func mayDelete(_ item: JunkItem) -> Bool {

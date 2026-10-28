@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showConfirmation = false
     @State private var showPrivacy = false
     @State private var showDeepestFile = false
+    @State private var showStorage = false
 
     var body: some View {
         NavigationSplitView {
@@ -34,6 +35,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showPrivacy) {
             PrivacyView()
+        }
+        .sheet(isPresented: $showStorage) {
+            StorageView()
         }
         .sheet(isPresented: $showDeepestFile) {
             DeepestFileView()
@@ -61,6 +65,13 @@ struct ContentView: View {
             }
 
             Section("Actions") {
+                Button {
+                    showStorage = true
+                } label: {
+                    Label("Storage", systemImage: "internaldrive")
+                }
+                .accessibilityLabel("Storage: see what fills your disk and delete items directly")
+
                 Button {
                     showDeepestFile = true
                 } label: {

@@ -190,12 +190,9 @@ struct DeepestFileView: View {
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let category = result.verdict.category, let risk = result.verdict.riskLevel {
-                HStack(spacing: 6) {
-                    Label(category.displayName, systemImage: category.symbolName)
-                        .font(.caption)
-                    RiskBadge(risk: risk)
-                }
+            if let category = result.verdict.category {
+                Label(category.displayName, systemImage: category.symbolName)
+                    .font(.caption)
             }
 
             Divider()
@@ -345,7 +342,7 @@ private struct SuggestionRow: View {
 
             Spacer()
 
-            RiskBadge(risk: item.riskLevel)
+            FlagChip(flag: item.riskLevel == .low ? .safe : .checkFirst)
 
             Text(ByteFormat.string(item.size))
                 .font(.callout)

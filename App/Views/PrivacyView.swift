@@ -63,6 +63,18 @@ struct PrivacyView: View {
                     )
 
                     principle(
+                        title: "Storage",
+                        body: """
+                            Only when you open it, Broom measures your apps, files and \
+                            Library folders (sizes only, never contents). Delete there is \
+                            Move to Trash for the one item you chose: it is re-checked first, \
+                            your own files and apps ask once, and Undo is offered. Parts of \
+                            macOS, Photos and Mail libraries, and the Trash itself are never \
+                            deleted.
+                            """
+                    )
+
+                    principle(
                         title: "Full Disk Access",
                         body: FullDiskAccess.explanation + "\n\nBroom asks for this only when you choose to scan protected locations, and links you straight to the relevant System Settings pane."
                     )

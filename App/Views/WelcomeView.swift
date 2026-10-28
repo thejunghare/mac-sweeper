@@ -5,6 +5,7 @@ import SwiftUI
 struct WelcomeView: View {
     @EnvironmentObject private var model: ScanViewModel
     @State private var showPrivacy = false
+    @State private var showStorage = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -44,6 +45,15 @@ struct WelcomeView: View {
             .keyboardShortcut(.defaultAction)
             .accessibilityLabel("Scan for junk files")
 
+            Button {
+                showStorage = true
+            } label: {
+                Label("Manage Storage", systemImage: "internaldrive")
+                    .padding(.horizontal, 6)
+            }
+            .controlSize(.large)
+            .accessibilityLabel("Manage storage: see what fills your disk and delete items directly")
+
             Button("What does Broom access and why?") {
                 showPrivacy = true
             }
@@ -55,6 +65,7 @@ struct WelcomeView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showPrivacy) { PrivacyView() }
+        .sheet(isPresented: $showStorage) { StorageView() }
     }
 
     private var permissionCard: some View {
